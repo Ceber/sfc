@@ -8,7 +8,7 @@
 
 /**
  * @brief RAII hack to unlock steps waiting for previous ones.
- * This enable synchronize the call the 'run' method.
+ * This enable synchronize the call to 'run' method.
  */
 class StepActivation {
 private:
