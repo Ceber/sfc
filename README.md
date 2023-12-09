@@ -1,5 +1,8 @@
 # Sequential Function Chart Library – C++ 2nd party library: based on standard library
 
+![Workflow](https://github.com/Ceber/sfc/actions/workflows/cmake-single-platform.yml/badge.svg)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://paypal.me/ceber68)
+
 ## Library to handle sequence running composed by steps and transitions. Each step can trigger several actions.
 The main purpose is to interpret "grafcet" sequences. It is not forseen for "production use" (even if it could be enough).
 It is used for sequences developpment, in collaboration with another library that enable to generate C++ code to "hard-code" sequences, that give more determinism and enable "soft real-time".
