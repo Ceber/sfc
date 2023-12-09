@@ -1,0 +1,14 @@
+conan_imports_manifest.txt
+*.so
+*.a
+*.data
+bin/*
+build/*
+.directory/*
+.settings/*
+.vscode/*
+/bin/
+/build/
+/.doc/
+*.bak
+CMakeUserPresets.json
