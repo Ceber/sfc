@@ -57,8 +57,8 @@ Sequence::Sequence(const Sequence &toCopy) : Sequence() {
 Sequence::~Sequence() {
   stop();
   {
-    m_sequence_changed_callbacks.clear();
     std::lock_guard<std::mutex> lock(seq_cb_mutex);
+    m_sequence_changed_callbacks.clear();
   }
   {
     std::lock_guard<std::mutex> lock(step_cb_mutex);
