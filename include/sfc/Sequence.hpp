@@ -47,10 +47,6 @@ private:
    */
   std::mutex step_cb_mutex;
   /**
-   * @brief To protect 'm_thread_pool'.
-   */
-  std::mutex thread_pool_mutex;
-  /**
    * @brief Thread pool size (threads count).
    */
   uint32_t m_thread_pool_size = 0;

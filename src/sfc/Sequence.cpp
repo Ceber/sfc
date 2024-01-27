@@ -327,10 +327,7 @@ void Sequence::run(unsigned int step_id, std::shared_ptr<Step> previous_step, st
                     m_steps_current_call_count[next_id] == m_steps_required_call_count[next_id]) {
                   m_steps_current_call_count[next_id] = 0;
                   uint32_t available_threads_count = 0;
-                  {
-                    std::lock_guard<std::mutex> _lock(thread_pool_mutex);
-                    available_threads_count = m_thread_pool->n_idle();
-                  }
+                  available_threads_count = m_thread_pool->n_idle();
                   if (m_running && (available_threads_count == 0 || m_running_steps > m_thread_pool_size)) {
                     m_running = false;
                     m_stop_code = CRAZY_LOOPING_STOP;
@@ -342,10 +339,7 @@ void Sequence::run(unsigned int step_id, std::shared_ptr<Step> previous_step, st
 #ifdef DEBUG_MODE
                     std::cout << "run step id:" << next_id << std::endl;
 #endif
-                    {
-                      std::lock_guard<std::mutex> _lock(thread_pool_mutex);
-                      m_thread_pool->push([=](int) { run(next_id, it->second, cond_var); });
-                    }
+                    m_thread_pool->push([=](int) { run(next_id, it->second, cond_var); });
                   }
                 }
               }
@@ -439,10 +433,7 @@ void Sequence::start(unsigned int init_step_id) {
   }
   m_running = true;
   fireSequenceChanged(m_running);
-  {
-    std::lock_guard<std::mutex> lock(thread_pool_mutex);
-    m_thread_pool = std::make_unique<ctpl::thread_pool>(m_thread_pool_size);
-  }
+  m_thread_pool = std::make_unique<ctpl::thread_pool>(m_thread_pool_size);
   run(init_step_id);
 }
 
@@ -451,7 +442,6 @@ void Sequence::stop(bool lock) {
   m_stop_code = NORMAL_STOP;
   {
     if (lock) {
-      std::lock_guard<std::mutex> _lock(thread_pool_mutex);
       if (m_thread_pool) {
         // Wait for steps termination.
         m_thread_pool->stop(true);
