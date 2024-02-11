@@ -35,6 +35,10 @@ class Sequence {
 
 private:
   /**
+   * @brief To synchronize start/stop.
+   */
+  std::mutex start_stop_mutex;
+  /**
    * @brief To protect access to 'm_steps_required_call_count' and 'm_steps_current_call_count'.
    */
   std::mutex map_mutex;
@@ -46,6 +50,7 @@ private:
    * @brief To sync callbacks triggerring.
    */
   std::mutex step_cb_mutex;
+
   /**
    * @brief Thread pool size (threads count).
    */
@@ -241,12 +246,12 @@ public:
   const std::vector<std::shared_ptr<Step>> getActivatedSteps() const;
 
   /**
-   * @brief Stop 'Sequential function chart'.
+   * @brief Start 'Sequential function chart'.
    */
   void start(unsigned int init_step_id = 0);
 
   /**
    * @brief Stop 'Sequential function chart'.
    */
-  void stop(bool lock = true);
+  void stop(bool fire = true);
 };

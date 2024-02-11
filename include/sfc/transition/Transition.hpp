@@ -9,6 +9,9 @@ class Step;
 
 class Transition {
 
+public:
+  enum ValidationMode { NONE = 0, ALL = 1, ANY = 2 };
+
 private:
   /**
    * @brief Next steps after crossing transition.
@@ -26,15 +29,33 @@ private:
    */
   std::atomic_bool m_receptivity_state;
 
+  /**
+   * @brief Validation mode.
+   * This allow to use a single transition to end an exclusive sequence.
+   */
+  ValidationMode m_validation_mode;
+
 public:
   static auto mk_sp_transition(std::initializer_list<std::weak_ptr<Step>> nexts,
-                               std::initializer_list<std::weak_ptr<Step>> validations) {
-    return std::make_shared<Transition>(nexts, validations);
+                               std::initializer_list<std::weak_ptr<Step>> validations, ValidationMode mode = ALL) {
+    return std::make_shared<Transition>(nexts, validations, mode);
   }
 
-  Transition(std::vector<std::weak_ptr<Step>> next_steps = {}, std::vector<std::weak_ptr<Step>> validation_steps = {});
+  Transition(std::vector<std::weak_ptr<Step>> next_steps = {}, std::vector<std::weak_ptr<Step>> validation_steps = {},
+             ValidationMode mode = ALL);
 
   ~Transition() = default;
+
+  /**
+   * @brief Get the Validation Mode.
+   * @return ValidationMode
+   */
+  ValidationMode getValidationMode() const;
+  /**
+   * @brief Set the Validation Mode.
+   * @param mode
+   */
+  void setValidationMode(ValidationMode mode);
 
   /**
    * @brief Get all next steps.

@@ -54,17 +54,7 @@ Sequence::Sequence(const Sequence &toCopy) : Sequence() {
   }
 }
 
-Sequence::~Sequence() {
-  stop();
-  {
-    std::lock_guard<std::mutex> lock(seq_cb_mutex);
-    m_sequence_changed_callbacks.clear();
-  }
-  {
-    std::lock_guard<std::mutex> lock(step_cb_mutex);
-    m_step_changed_callbacks.clear();
-  }
-}
+Sequence::~Sequence() { stop(); }
 
 unsigned int Sequence::getTransitionPollingDelay() const { return m_transition_polling_delay; }
 
@@ -112,6 +102,80 @@ bool checkMacro(Macro &current_step) {
   return ret;
 }
 
+std::vector<std::shared_ptr<Transition>>
+getTransitionsFromStep(std::weak_ptr<Step> base_step, std::vector<std::weak_ptr<Step>> &traversed_steps,
+                       const std::weak_ptr<Step> &s, std::vector<std::shared_ptr<Transition>> &transitions, int index = 0) {
+  if (std::find_if(traversed_steps.begin(), traversed_steps.end(),
+                   [base_step](const auto &s) { return base_step.lock() == s.lock(); }) == traversed_steps.end()) {
+
+    if (s.lock() != base_step.lock()) {
+      traversed_steps.push_back(s);
+    } else if (traversed_steps.size() > index && s.lock() == base_step.lock()) {
+      traversed_steps.push_back(s);
+      return transitions;
+    }
+    for (auto &t : s.lock()->getNextTransitions()) {
+      if (std::find(transitions.begin(), transitions.end(), t) == transitions.end()) {
+        transitions.push_back(t);
+        for (auto &s : t->nexts()) {
+          if (std::find_if(traversed_steps.begin(), traversed_steps.end(),
+                           [s](const auto &_s) { return _s.lock() == s.lock(); }) == traversed_steps.end()) {
+            getTransitionsFromStep(base_step, traversed_steps, s.lock(), transitions);
+          }
+        }
+      }
+    }
+  }
+  return transitions;
+}
+
+std::vector<std::shared_ptr<Transition>> getTransitionsFromStep(std::weak_ptr<Step> base_step,
+                                                                std::vector<std::weak_ptr<Step>> &traversed_steps,
+                                                                const std::weak_ptr<Step> &s, int i = 0) {
+  std::vector<std::shared_ptr<Transition>> transitions;
+  return getTransitionsFromStep(base_step, traversed_steps, s, transitions, i);
+}
+
+std::vector<std::shared_ptr<Transition>> next_common_transition(std::vector<std::weak_ptr<Step>> &traversed_steps,
+                                                                const std::vector<std::weak_ptr<Step>> &steps) {
+  // Same principle as next_common_step, but for simultaneous sequences.
+  // I have several steps that are the starting point of a simultaneous sequence (Sequential function Chart).
+  // I need to find the next common transition of all the steps given in parameter.
+  if (steps.empty()) {
+    throw std::invalid_argument("No steps given !");
+  }
+
+  std::vector<std::vector<std::shared_ptr<Transition>>> transitions;
+  std::vector<std::weak_ptr<Step>> handled_steps;
+  for (auto &s : steps) {
+    traversed_steps.clear();
+    traversed_steps = handled_steps;
+    transitions.push_back(getTransitionsFromStep(s, traversed_steps, s, handled_steps.size()));
+    handled_steps.push_back(s);
+  }
+
+  // Find first common occurence of all vectors.
+  std::vector<std::shared_ptr<Transition>> common_transitions;
+  for (auto &t : transitions[0]) {
+    bool found = true;
+    for (auto &transition : transitions) {
+      if (std::find(transition.begin(), transition.end(), t) == transition.end()) {
+        found = false;
+      }
+    }
+    if (found) {
+      common_transitions.push_back(t);
+    }
+  }
+
+  return common_transitions;
+}
+
+std::vector<std::shared_ptr<Transition>> next_common_transition(const std::vector<std::weak_ptr<Step>> &steps) {
+  std::vector<std::weak_ptr<Step>> traversed_steps;
+  return next_common_transition(traversed_steps, steps);
+}
+
 /**
  * @brief Helper function that recursively check if we respect the chart constraints.
  *
@@ -137,6 +201,13 @@ bool loopCheck(Step &current_step, std::vector<unsigned int> &traversed_steps, b
   for (auto t : current_step.getNextTransitions()) {
     // Every transition must have at least one next step ! And consitent validation !
     if (t->nexts().size() > 0 && t->validations().size() > 0) {
+      if (t->nexts().size() > 1) {
+        if (next_common_transition(t->nexts()).empty()) {
+          std::cerr << "Simultaneous sequence is missing common transition !" << std::endl;
+          ret &= false;
+          break;
+        }
+      }
       // One of the nexts has to reach an init-step,
       // the others have to loop somewhere else,
       // Surely to an already traversed step !
@@ -149,7 +220,7 @@ bool loopCheck(Step &current_step, std::vector<unsigned int> &traversed_steps, b
       }
     } else {
       std::cerr << "Transition is missing 'nexts' or 'validations' ! " << std::endl;
-      return false;
+      ret &= false;
     }
   }
   return ret;
@@ -170,9 +241,11 @@ bool Sequence::isValid() const {
     ret &= loopCheck(*init_step, traversed_steps, !first);
     first = false;
   }
+
   if (!ret) {
-    std::cerr << "One of the initial_steps is not looping to another (or same) init-step." << std::endl;
+    std::cerr << "Loop-check error." << std::endl;
   }
+
   return ret;
 }
 
@@ -319,7 +392,8 @@ void Sequence::run(unsigned int step_id, std::shared_ptr<Step> previous_step, st
               {
                 std::lock_guard<std::mutex> _lock(map_mutex);
                 if (!m_steps_required_call_count.count(next_id)) {
-                  m_steps_required_call_count[next_id] = t->validations().size();
+                  m_steps_required_call_count[next_id] =
+                      (t->getValidationMode() == Transition::ALL) ? t->validations().size() : 1;
                   m_steps_current_call_count[next_id] = 0;
                 }
                 m_steps_current_call_count[next_id] = m_steps_current_call_count[next_id] + 1;
@@ -413,48 +487,43 @@ void Sequence::fireStepChanged(unsigned int id, bool state) {
 }
 
 void Sequence::start(unsigned int init_step_id) {
-  steps_mutex.lock();
-  bool all_transition_true = std::all_of(m_steps.begin(), m_steps.end(), [](const auto &p) {
-    const Step &s = *p.second;
-    return std::all_of(s.getNextTransitions().begin(), s.getNextTransitions().end(),
-                       [](const auto &t) { return t->getReceptivityState(); });
-  });
-  all_transition_true &= std::all_of(m_initial_steps.begin(), m_initial_steps.end(), [](const auto &p) {
-    const Step &s = *p.second;
-    return std::all_of(s.getNextTransitions().begin(), s.getNextTransitions().end(),
-                       [](const auto &t) { return t->getReceptivityState(); });
-  });
-  steps_mutex.unlock();
-  if (all_transition_true) {
-    throw std::logic_error("Trying to run a sequence with all transitions true at startup is not allowed...for the moment !");
+  {
+    std::lock_guard<std::mutex> _lock(start_stop_mutex);
+    steps_mutex.lock();
+    bool all_transition_true = std::all_of(m_steps.begin(), m_steps.end(), [](const auto &p) {
+      const Step &s = *p.second;
+      return std::all_of(s.getNextTransitions().begin(), s.getNextTransitions().end(),
+                         [](const auto &t) { return t->getReceptivityState(); });
+    });
+    all_transition_true &= std::all_of(m_initial_steps.begin(), m_initial_steps.end(), [](const auto &p) {
+      const Step &s = *p.second;
+      return std::all_of(s.getNextTransitions().begin(), s.getNextTransitions().end(),
+                         [](const auto &t) { return t->getReceptivityState(); });
+    });
+    steps_mutex.unlock();
+    if (all_transition_true) {
+      throw std::logic_error("Trying to run a sequence with all transitions true at startup is not allowed...for the moment !");
+    }
+    if (!isValid()) {
+      throw std::runtime_error("Trying to run an invalid sequence !");
+    }
+    m_running = true;
+    fireSequenceChanged(m_running);
+    m_thread_pool = std::make_unique<ctpl::thread_pool>(m_thread_pool_size);
   }
-  if (!isValid()) {
-    throw std::runtime_error("Trying to run an invalid sequence !");
-  }
-  m_running = true;
-  fireSequenceChanged(m_running);
-  m_thread_pool = std::make_unique<ctpl::thread_pool>(m_thread_pool_size);
   run(init_step_id);
 }
 
-void Sequence::stop(bool lock) {
+void Sequence::stop(bool fire) {
+  std::lock_guard<std::mutex> _lock(start_stop_mutex);
   m_running = false;
   m_stop_code = NORMAL_STOP;
-  {
-    if (lock) {
-      if (m_thread_pool) {
-        // Wait for steps termination.
-        m_thread_pool->stop(true);
-        m_thread_pool.reset(nullptr);
-      }
-    } else {
-      if (m_thread_pool) {
-        // Wait for steps termination.
-        m_thread_pool->stop(true);
-        m_thread_pool.reset(nullptr);
-      }
-    }
-
+  if (m_thread_pool) {
+    // Wait for steps termination.
+    m_thread_pool->stop(true);
+    m_thread_pool.reset(nullptr);
+  }
+  if (fire) {
     fireSequenceChanged(m_running);
   }
 }
