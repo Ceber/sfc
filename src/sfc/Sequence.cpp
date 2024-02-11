@@ -104,7 +104,7 @@ bool checkMacro(Macro &current_step) {
 
 std::vector<std::shared_ptr<Transition>>
 getTransitionsFromStep(std::weak_ptr<Step> base_step, std::vector<std::weak_ptr<Step>> &traversed_steps,
-                       const std::weak_ptr<Step> &s, std::vector<std::shared_ptr<Transition>> &transitions, int index = 0) {
+                       const std::weak_ptr<Step> &s, std::vector<std::shared_ptr<Transition>> &transitions, uint32_t index = 0) {
   if (std::find_if(traversed_steps.begin(), traversed_steps.end(),
                    [base_step](const auto &s) { return base_step.lock() == s.lock(); }) == traversed_steps.end()) {
 
@@ -131,7 +131,7 @@ getTransitionsFromStep(std::weak_ptr<Step> base_step, std::vector<std::weak_ptr<
 
 std::vector<std::shared_ptr<Transition>> getTransitionsFromStep(std::weak_ptr<Step> base_step,
                                                                 std::vector<std::weak_ptr<Step>> &traversed_steps,
-                                                                const std::weak_ptr<Step> &s, int i = 0) {
+                                                                const std::weak_ptr<Step> &s, uint32_t i = 0) {
   std::vector<std::shared_ptr<Transition>> transitions;
   return getTransitionsFromStep(base_step, traversed_steps, s, transitions, i);
 }
