@@ -313,7 +313,7 @@ const std::vector<std::shared_ptr<Step>> Sequence::getActivatedSteps() const {
   std::transform(m_initial_steps.begin(), m_initial_steps.end(), std::back_inserter(to_vector),
                  [](auto &kv) { return kv.second; });
   to_vector.erase(
-      std::remove_if(to_vector.begin(), to_vector.end(), [](const std::shared_ptr<Step> &s) { return s->isActivated(); }),
+      std::remove_if(to_vector.begin(), to_vector.end(), [](const std::shared_ptr<Step> &s) { return !s->isActivated(); }),
       to_vector.end());
   return to_vector;
 }
