@@ -1,6 +1,7 @@
 #include "sfc/step/Macro.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 Macro::Macro(unsigned int step_id, std::vector<std::shared_ptr<StepAction>> m_actions) : Step(step_id, MACRO_STEP, m_actions) {}
 
